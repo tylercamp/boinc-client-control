@@ -30,42 +30,32 @@
             return;
         }
 
-        using (var rpcClient = new BoincRpc.RpcClient())
-        {
-            Console.WriteLine($"Connecting to {clientIp}:{port}...");
-            await rpcClient.ConnectAsync(clientIp, port);
-
-            Console.WriteLine("Authorizing...");
-            if (!await rpcClient.AuthorizeAsync(accessKey)) {
-                Console.WriteLine("Error: Failed to authorize");
-                return;
-            }
-            Console.WriteLine("Success!");
-
-            var boincClient = new BoincClient(rpcClient);
-
-            Console.WriteLine("Starting HTTP server...");
-            var app = WebApplication.CreateBuilder().Build();
-
-            app.MapGet("cpu", async ctx => ctx.Response.WriteAsync(await boincClient.GetCpuPercent()));
-            app.MapPost("cpu", async (c) => {
-                var pct = await new StreamReader(c.Request.Body).ReadToEndAsync();
-                try
-                {
-                    await boincClient.SetCpuPercent(pct);
-                } catch (Exception e)
-                {
-                    c.Response.StatusCode = 400;
-                    await c.Response.WriteAsync(e.Message);
-                }
-            });
-
-            app.MapPost("start", async (c) => await boincClient.SetRunMode(BoincRpc.Mode.Always));
-            app.MapPost("stop", async (c) => await boincClient.SetRunMode(BoincRpc.Mode.Never));
-            app.MapPost("resume", async (c) => await boincClient.SetRunMode(BoincRpc.Mode.Auto));
-
-            app.Run();
+        var client = new BoincClient(clientIp, accessKey, port);
+        if (!(await client.Validate())) {
+            return;
         }
+
+        Console.WriteLine("Starting HTTP server...");
+        var app = WebApplication.CreateBuilder().Build();
+
+        app.MapGet("cpu", async ctx => await ctx.Response.WriteAsync(await client.GetCpuPercent()));
+        app.MapPost("cpu", async (c) => {
+            var pct = await new StreamReader(c.Request.Body).ReadToEndAsync();
+            try
+            {
+                await client.SetCpuPercent(pct);
+            } catch (Exception e)
+            {
+                c.Response.StatusCode = 400;
+                await c.Response.WriteAsync(e.Message);
+            }
+        });
+
+        app.MapPost("start", async (c) => await client.SetRunMode(BoincRpc.Mode.Always));
+        app.MapPost("stop", async (c) => await client.SetRunMode(BoincRpc.Mode.Never));
+        app.MapPost("resume", async (c) => await client.SetRunMode(BoincRpc.Mode.Auto));
+
+        app.Run();
     }
 }
 
